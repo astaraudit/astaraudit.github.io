@@ -1,0 +1,85 @@
+---
+import Brand from './Brand.astro';
+---
+
+<header class="nav" aria-label="Site header">
+  <div class="container nav__inner">
+    <a href="/" class="nav__brand" aria-label="A* Audit — home">
+      <Brand />
+    </a>
+
+    <nav class="nav__links" aria-label="Primary">
+      <a href="#research" class="nav__link">
+        <span class="nav__link-name">Research</span>
+      </a>
+      {/* TODO: re-enable the Team link once /team is built. */}
+      {/* <a href="/team" class="nav__link"><span class="nav__link-name">Team</span></a> */}
+      <a href="#contact" class="nav__link">
+        <span class="nav__link-name">Contact</span>
+      </a>
+      <a href="#contact" class="btn nav__cta">
+        <span>Request an audit</span>
+      </a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: color-mix(in srgb, var(--color-bg) 88%, transparent);
+    backdrop-filter: saturate(140%) blur(10px);
+    -webkit-backdrop-filter: saturate(140%) blur(10px);
+    border-bottom: 1px solid var(--color-rule);
+  }
+
+  .nav__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: var(--nav-height);
+    gap: 1.5rem;
+  }
+
+  .nav__brand {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    color: var(--color-ink);
+  }
+
+  .nav__links {
+    display: flex;
+    align-items: center;
+    gap: clamp(1rem, 2.4vw, 2rem);
+  }
+
+  .nav__link {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    color: var(--color-ink-2);
+    transition: color 0.18s var(--ease-out);
+    line-height: 1;
+  }
+
+  .nav__link:hover { color: var(--color-accent); }
+
+  .nav__link-name {
+    font-family: var(--font-display);
+    font-size: 1.08rem;
+    font-style: italic;
+    color: inherit;
+  }
+
+  .nav__cta {
+    padding: 0.7em 1.2em;
+    font-size: 0.72rem;
+  }
+
+  @media (max-width: 760px) {
+    .nav__link:not(.nav__cta) { display: none; }
+  }
+</style>

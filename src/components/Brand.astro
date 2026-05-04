@@ -1,0 +1,63 @@
+---
+// Inline brand mark: "A*" wordmark with the asterisk rendered as a
+// mathematical superscript path. The asterisk is notation, never
+// decoration, and always sits superscripted to the A.
+---
+
+<span class="brand">
+  <span class="brand__a">A</span><svg class="brand__star" viewBox="-12 -32 24 24" aria-hidden="true">
+    <g fill="#8B0000">
+      <ellipse cx="0" cy="-20" rx="2" ry="9"/>
+      <ellipse cx="0" cy="-20" rx="2" ry="9" transform="rotate(60 0 -20)"/>
+      <ellipse cx="0" cy="-20" rx="2" ry="9" transform="rotate(120 0 -20)"/>
+    </g>
+  </svg><span class="brand__divider" aria-hidden="true"></span><span class="brand__rest">ASTAR AUDIT</span>
+</span>
+
+<style>
+  .brand {
+    display: inline-flex;
+    align-items: baseline;
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 1.4rem;
+    color: var(--color-ink);
+    letter-spacing: -0.005em;
+    line-height: 1;
+  }
+
+  .brand__a {
+    display: inline-block;
+    font-style: normal;
+  }
+
+  .brand__star {
+    width: 0.6em;
+    height: 0.6em;
+    margin-left: 0.04em;
+    align-self: flex-start;
+    overflow: visible;
+    transform: translateY(-0.3em);
+    transition: transform 0.4s var(--ease-out);
+  }
+
+  .brand:hover .brand__star {
+    transform: translateY(-0.3em) rotate(72deg);
+  }
+
+  .brand__divider {
+    align-self: stretch;
+    width: 1px;
+    margin: 0.15em 0.6em 0;
+    background: var(--color-rule-strong);
+  }
+
+  .brand__rest {
+    font-family: var(--font-mono);
+    font-size: 0.78em;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-ink);
+  }
+</style>

@@ -1,0 +1,186 @@
+---
+import Brand from './Brand.astro';
+---
+
+<footer class="footer">
+  <div class="container footer__main">
+    <div class="footer__brand">
+      <Brand />
+      <p class="footer__pitch">
+        <em>
+          Smart contract security for DeFi math primitives.
+          We audit the math, not just the code.
+        </em>
+      </p>
+    </div>
+
+    <div class="footer__cols">
+      <div class="footer__col">
+        <h4>Sections</h4>
+        <ul role="list">
+          <li><a href="#problem">§ 01 The problem</a></li>
+          <li><a href="#methodology">§ 02 Methodology</a></li>
+          <li><a href="#research">§ 03 Research</a></li>
+          <li><a href="#contact">§ 04 Contact</a></li>
+        </ul>
+      </div>
+
+      <div class="footer__col">
+        <h4>Elsewhere</h4>
+        <ul role="list">
+          <li>
+            <a href="https://x.com/Astaraudit" target="_blank" rel="noopener noreferrer">
+              X &nbsp;<span class="footer__arrow">↗</span>
+            </a>
+          </li>
+          <li>
+            <a href="https://github.com/astaraudit" target="_blank" rel="noopener noreferrer">
+              GitHub &nbsp;<span class="footer__arrow">↗</span>
+            </a>
+          </li>
+          <li>
+            <a href="mailto:astaraudit@gmail.com">
+              astaraudit@gmail.com
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Colophon — a publishing convention; says how the page was set. -->
+  <div class="container footer__colophon">
+    <p class="footer__copy">© 2025 · A<sup>∗</sup> Audit · All rights reserved.</p>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    margin-top: clamp(3rem, 8vw, 6rem);
+    border-top: 1px solid var(--color-ink);
+    padding-top: 3rem;
+    padding-bottom: 1.6rem;
+    background: var(--color-bg);
+    position: relative;
+  }
+
+  /* A discreet ornamental rule sitting above the footer. */
+  .footer::before {
+    content: '⁕';
+    position: absolute;
+    top: -0.85rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--color-bg);
+    padding: 0 0.65rem;
+    font-family: var(--font-display);
+    color: var(--color-accent);
+    font-size: 1.2rem;
+    line-height: 1;
+  }
+
+  .footer__main {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr);
+    gap: clamp(2rem, 5vw, 4rem);
+    padding-bottom: 2.6rem;
+    border-bottom: 1px solid var(--color-rule);
+  }
+
+  .footer__pitch {
+    margin: 1.1rem 0 0;
+    font-family: var(--font-body);
+    font-style: italic;
+    color: var(--color-ink-3);
+    font-size: 0.95rem;
+    max-width: 36ch;
+    line-height: 1.5;
+  }
+
+  .footer__cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+  }
+
+  .footer__col h4 {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-ink-3);
+    margin: 0 0 1rem;
+    font-weight: 400;
+  }
+
+  .footer__col ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .footer__col a {
+    text-decoration: none;
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    color: var(--color-ink);
+    transition: color 0.18s var(--ease-out);
+    display: inline-flex;
+    align-items: baseline;
+  }
+
+  .footer__col a:hover { color: var(--color-accent); }
+
+  .footer__arrow {
+    font-family: var(--font-mono);
+    font-size: 0.78em;
+    color: var(--color-ink-3);
+    transition: transform 0.18s var(--ease-out);
+  }
+
+  .footer__col a:hover .footer__arrow {
+    transform: translate(2px, -2px);
+    color: var(--color-accent);
+  }
+
+  .footer__colophon {
+    padding-top: 1.6rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .footer__colophon p {
+    margin: 0;
+    font-family: var(--font-body);
+    font-size: 0.86rem;
+    color: var(--color-ink-3);
+    line-height: 1.5;
+  }
+
+  .footer__colophon em { color: var(--color-ink); font-style: italic; }
+
+  .footer__qed {
+    color: var(--color-accent);
+    margin-right: 0.4em;
+    font-style: normal;
+  }
+
+  .footer__copy {
+    font-family: var(--font-mono) !important;
+    font-size: 0.72rem !important;
+    letter-spacing: 0.12em;
+    color: var(--color-ink-3) !important;
+    text-transform: uppercase;
+  }
+
+  @media (max-width: 760px) {
+    .footer__main { grid-template-columns: 1fr; }
+    .footer__colophon { flex-direction: column; align-items: flex-start; }
+  }
+</style>

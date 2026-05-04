@@ -1,0 +1,52 @@
+// Research card data.
+// TODO: replace these placeholder entries with real published threads /
+// articles from the A* Audit team.
+
+export type DefiSystem = 'AMM' | 'LENDING' | 'CDP' | 'GENERAL';
+export type ContentType =
+  | 'BUG BREAKDOWN'
+  | 'CONCEPT EXPLAINER'
+  | 'POST-MORTEM'
+  | 'CHALLENGE';
+
+export interface ResearchItem {
+  /** DeFi system the piece concerns. */
+  tag: DefiSystem;
+  /** Kind of writing. */
+  type: ContentType;
+  /** Human-readable date, e.g. "May 2026". */
+  date: string;
+  /** Display title. */
+  title: string;
+  /** One-line summary shown on the card. */
+  summary: string;
+  /** Outbound link (thread, article, blog post). */
+  url: string;
+}
+
+export const research: ResearchItem[] = [
+  {
+    tag: 'LENDING',
+    type: 'BUG BREAKDOWN',
+    date: 'May 2026',
+    title: 'Liquidation swaps the borrower',
+    summary: 'A repay transaction lands after a liquidator reassigns the position — and pays a stranger\'s loan.',
+    url: 'https://x.com/Astaraudit/status/2051095133857440221',
+  },
+  // {
+  //   tag: 'LENDING',
+  //   type: 'CONCEPT EXPLAINER',
+  //   date: 'May 2026',
+  //   title: '[Article title]',
+  //   summary: '[One-line summary]',
+  //   url: '#',
+  // },
+  // {
+  //   tag: 'CDP',
+  //   type: 'POST-MORTEM',
+  //   date: 'May 2026',
+  //   title: '[Article title]',
+  //   summary: '[One-line summary]',
+  //   url: '#',
+  // },
+];

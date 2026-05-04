@@ -1,0 +1,807 @@
+---
+// FIG. 1.1 — Interactive A* pathfinding demonstration.
+//
+// The figure walks through A* iteration-by-iteration in the spirit of a
+// worked textbook example: nodes transition from hollow (unreached) →
+// outlined (frontier) → filled (closed); the optimal path solidifies
+// in ink only after the goal is popped. Hovering a node reveals its
+// g(n), h(n), f(n) values in the margin. All visual states are
+// driven by class toggles; no canvas, no chart library.
+
+type NodeKind = 'source' | 'target' | 'mid';
+
+interface GraphNode {
+  id: string;
+  x: number;
+  y: number;
+  label: string;
+  kind: NodeKind;
+  h: number;          // heuristic estimate to t
+  lx: number;         // label offset x
+  ly: number;         // label offset y
+}
+
+const NODES: GraphNode[] = [
+  { id: 's',  x: 68,  y: 180, label: 's',  kind: 'source', h: 6, lx: 0,  ly: -22 },
+  { id: 'v1', x: 196, y: 180, label: 'v₁', kind: 'mid',    h: 5, lx: 0,  ly: -16 },
+  { id: 'v2', x: 292, y: 180, label: 'v₂', kind: 'mid',    h: 4, lx: 0,  ly: -16 },
+  { id: 'v3', x: 382, y: 180, label: 'v₃', kind: 'mid',    h: 1, lx: 0,  ly: -16 },
+  { id: 't',  x: 450, y: 180, label: 't',  kind: 'target', h: 0, lx: 0,  ly: -22 },
+  { id: 'a',  x: 170, y: 78,  label: 'a',  kind: 'mid',    h: 7, lx: -14, ly: 4 },
+  { id: 'b',  x: 170, y: 290, label: 'b',  kind: 'mid',    h: 7, lx: -14, ly: 4 },
+  { id: 'c',  x: 272, y: 50,  label: 'c',  kind: 'mid',    h: 6, lx: 0,  ly: -14 },
+  { id: 'd',  x: 288, y: 322, label: 'd',  kind: 'mid',    h: 5, lx: 0,  ly: 22 },
+  { id: 'e',  x: 368, y: 92,  label: 'e',  kind: 'mid',    h: 3, lx: 14, ly: 4 },
+  { id: 'f',  x: 380, y: 232, label: 'f',  kind: 'mid',    h: 2, lx: 14, ly: 4 },
+];
+
+type Edge = [from: string, to: string, weight: number, kind?: 'opt'];
+
+const EDGES: Edge[] = [
+  // Optimal path s → v₁ → v₂ → v₃ → t (total cost 7)
+  ['s',  'v1', 2, 'opt'],
+  ['v1', 'v2', 1, 'opt'],
+  ['v2', 'v3', 3, 'opt'],
+  ['v3', 't',  1, 'opt'],
+  // Alternate explored topology (never traversed by A* — pruned by f-value)
+  ['s',  'a',  3],
+  ['s',  'b',  3],
+  ['a',  'c',  2],
+  ['a',  'v1', 3],
+  ['b',  'v2', 4],
+  ['b',  'd',  3],
+  ['c',  'e',  2],
+  ['c',  'v3', 4],
+  ['d',  'f',  3],
+  ['e',  't',  4],
+  ['f',  't',  3],
+];
+
+interface Step {
+  note: string;
+  current: string | null;
+  closed: string[];
+  frontier: [id: string, g: number, f: number][];
+  relax: [from: string, to: string][];
+  complete?: boolean;
+}
+
+// Pre-baked A* expansion sequence. With an admissible & monotonic
+// heuristic the alternates a, b stay parked on the frontier at f=10
+// while the optimal chain (f=7 throughout) is popped first.
+const STEPS: Step[] = [
+  { note: 'OPEN ← {s}',
+    current: null, closed: [],
+    frontier: [['s', 0, 6]],
+    relax: [] },
+  { note: 'pop s · expand 3 neighbours',
+    current: 's', closed: ['s'],
+    frontier: [['v1', 2, 7], ['a', 3, 10], ['b', 3, 10]],
+    relax: [['s','v1'], ['s','a'], ['s','b']] },
+  { note: 'pop v₁ · relax (v₁,v₂)',
+    current: 'v1', closed: ['s','v1'],
+    frontier: [['v2', 3, 7], ['a', 3, 10], ['b', 3, 10]],
+    relax: [['v1','v2']] },
+  { note: 'pop v₂ · relax (v₂,v₃)',
+    current: 'v2', closed: ['s','v1','v2'],
+    frontier: [['v3', 6, 7], ['a', 3, 10], ['b', 3, 10]],
+    relax: [['v2','v3']] },
+  { note: 'pop v₃ · relax (v₃,t)',
+    current: 'v3', closed: ['s','v1','v2','v3'],
+    frontier: [['t', 7, 7], ['a', 3, 10], ['b', 3, 10]],
+    relax: [['v3','t']] },
+  { note: 'pop t · GOAL · cost = 7',
+    current: 't', closed: ['s','v1','v2','v3','t'],
+    frontier: [['a', 3, 10], ['b', 3, 10]],
+    relax: [],
+    complete: true },
+];
+
+// ─── Geometry helpers ───────────────────────────────────────────────
+function nodeById(id: string): GraphNode {
+  const n = NODES.find(n => n.id === id);
+  if (!n) throw new Error(`unknown node ${id}`);
+  return n;
+}
+
+function nodeRadius(n: GraphNode): number {
+  return n.kind === 'source' || n.kind === 'target' ? 14 : 9;
+}
+
+function trim(a: GraphNode, b: GraphNode) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  // Pull origin slightly outside the source boundary; pull end inside
+  // by enough room for the arrow tip.
+  const padA = nodeRadius(a) + 1;
+  const padB = nodeRadius(b) + 4;
+  return {
+    x1: +(a.x + ux * padA).toFixed(2),
+    y1: +(a.y + uy * padA).toFixed(2),
+    x2: +(b.x - ux * padB).toFixed(2),
+    y2: +(b.y - uy * padB).toFixed(2),
+  };
+}
+
+function midOffset(seg: { x1: number; y1: number; x2: number; y2: number }, off: number) {
+  const dx = seg.x2 - seg.x1, dy = seg.y2 - seg.y1;
+  const len = Math.hypot(dx, dy) || 1;
+  // Perpendicular pointing to the visual "below" side (greater y) of
+  // the line, then biased a touch downward so labels sit under arrows.
+  const px = -dy / len, py = dx / len;
+  return {
+    x: +((seg.x1 + seg.x2) / 2 + px * off).toFixed(2),
+    y: +((seg.y1 + seg.y2) / 2 + py * off + 3).toFixed(2),
+  };
+}
+
+// Pre-compute edge geometry server-side so the SVG ships fully
+// positioned and the script only toggles state.
+const EDGE_GEOM = EDGES.map(([from, to, w, kind]) => {
+  const a = nodeById(from);
+  const b = nodeById(to);
+  const seg = trim(a, b);
+  const lbl = midOffset(seg, kind === 'opt' ? 14 : 11);
+  return { from, to, w, kind, seg, lbl };
+});
+---
+
+<figure class="graph" data-graph>
+  <div class="graph__plate">
+    <svg
+      viewBox="0 0 520 360"
+      role="img"
+      aria-labelledby="graph-title graph-desc"
+      xmlns="http://www.w3.org/2000/svg">
+      <title id="graph-title">A* pathfinding from source s to target t</title>
+      <desc id="graph-desc">
+        An interactive worked example of the A* search algorithm. Step
+        controls walk through the priority-queue expansion; hovering a
+        node reveals its g, h and f values.
+      </desc>
+
+      <defs>
+        <marker id="arr-faint" viewBox="0 0 10 10" refX="9" refY="5"
+                markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#B8B0A4"/>
+        </marker>
+        <marker id="arr-mid" viewBox="0 0 10 10" refX="9" refY="5"
+                markerWidth="5.5" markerHeight="5.5" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#5A5550"/>
+        </marker>
+        <marker id="arr-ink" viewBox="0 0 10 10" refX="9" refY="5"
+                markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#1B1814"/>
+        </marker>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none"
+                stroke="#E2DACB" stroke-width="0.5" opacity="0.6"/>
+        </pattern>
+      </defs>
+
+      <!-- ═══ Faint underlying grid (graph paper) ═══ -->
+      <rect width="520" height="360" fill="url(#grid)"/>
+
+      <!-- ═══ Top-left fixed annotations ═══ -->
+      <g font-family="IBM Plex Mono, monospace" font-size="9.5"
+         fill="#7A756E" letter-spacing="1.5">
+        <text x="20" y="28">FIG. 1.1</text>
+        <text x="20" y="44" fill="#A9A49C">A* pathfinding</text>
+      </g>
+
+      <!-- ═══ Edges ═══ -->
+      <g class="edges">
+        {EDGE_GEOM.map(({ from, to, w, kind, seg, lbl }) => (
+          <g
+            class={`edge ${kind === 'opt' ? 'edge--opt' : 'edge--alt'}`}
+            data-edge={`${from}-${to}`}
+            data-from={from}
+            data-to={to}
+            data-weight={w}
+          >
+            <line
+              class="edge-line"
+              x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
+            />
+            <text
+              class="edge-weight"
+              x={lbl.x} y={lbl.y}
+              text-anchor="middle"
+              font-family="IBM Plex Mono, monospace"
+              font-size="10">{w}</text>
+          </g>
+        ))}
+      </g>
+
+      <!-- ═══ Nodes ═══ -->
+      <g class="nodes">
+        {NODES.map(n => {
+          const isEndpoint = n.kind === 'source' || n.kind === 'target';
+          return (
+            <g class={`node node--${n.kind}`} data-node={n.id} tabindex="0">
+              {/* Source/target keep their double-circle textbook treatment */}
+              {isEndpoint ? (
+                <>
+                  <circle class="node-ring" cx={n.x} cy={n.y} r="14"/>
+                  <circle class="node-core" cx={n.x} cy={n.y} r={n.kind === 'source' ? 9 : 6}/>
+                </>
+              ) : (
+                <>
+                  <circle class="node-shell" cx={n.x} cy={n.y} r="9"/>
+                  <circle class="node-core node-core--mid" cx={n.x} cy={n.y} r="4"/>
+                </>
+              )}
+              <text
+                class="node-label"
+                x={n.x + n.lx} y={n.y + n.ly}
+                text-anchor="middle"
+                font-family="EB Garamond, Georgia, serif"
+                font-style="italic"
+                font-size="14">{n.label}</text>
+              {/* Transparent hit target — gives the whole node group a
+                  generous hover/focus area without affecting layout. */}
+              <circle class="node-hit" cx={n.x} cy={n.y} r="22"/>
+            </g>
+          );
+        })}
+      </g>
+
+      <!-- ═══ Footer ribbon — bottom edge ═══ -->
+      <g font-family="IBM Plex Mono, monospace" font-size="9.5"
+         fill="#7A756E" letter-spacing="2">
+        <text x="20" y="345">f(n) = g(n) + h(n)</text>
+        <text x="500" y="345" text-anchor="end" data-role="status">EXPLORING…</text>
+      </g>
+    </svg>
+  </div>
+
+  <!-- ═══ Control strip — sits on the bottom edge of the plate ═══ -->
+  <div class="graph__bar" role="group" aria-label="A* step controls">
+    <div class="bar-left">
+      <button class="bar-btn" data-act="prev" aria-label="Previous step" type="button">◀</button>
+      <span class="bar-step" data-role="step-label">STEP 0 / {STEPS.length - 1}</span>
+      <button class="bar-btn" data-act="next" aria-label="Next step" type="button">▶</button>
+      <button class="bar-btn bar-btn--play" data-act="play" aria-label="Play / pause" type="button">
+        <span data-role="play-icon">▶</span>
+      </button>
+      <button class="bar-btn" data-act="replay" aria-label="Replay from start" type="button">↻</button>
+    </div>
+    <div class="bar-right" data-role="readout"></div>
+  </div>
+</figure>
+
+<script
+  is:inline
+  define:vars={{ STEPS, NODES, OPTIMAL_PATH_EDGES: ['s-v1','v1-v2','v2-v3','v3-t'], OPTIMAL_PATH_NODES: ['v1','v2','v3'] }}
+>
+  (() => {
+    const root = document.querySelector('[data-graph]');
+    if (!root) return;
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const NODE_BY_ID = Object.fromEntries(NODES.map(n => [n.id, n]));
+
+    const stepLabel = root.querySelector('[data-role=step-label]');
+    const status    = root.querySelector('[data-role=status]');
+    const playIcon  = root.querySelector('[data-role=play-icon]');
+    const readout   = root.querySelector('[data-role=readout]');
+
+    let stepIdx = 0;
+    let playing = false;
+    let timer = null;
+    let hovered = null;
+
+    function clearState() {
+      root.querySelectorAll('.node').forEach(el => {
+        el.classList.remove('is-frontier', 'is-closed', 'is-current', 'is-on-path');
+      });
+      root.querySelectorAll('.edge').forEach(el => {
+        el.classList.remove('is-relaxed', 'is-on-path', 'is-current');
+      });
+      root.classList.remove('is-complete');
+    }
+
+    function applyStep(i) {
+      stepIdx = Math.max(0, Math.min(STEPS.length - 1, i));
+      const step = STEPS[stepIdx];
+
+      clearState();
+
+      step.closed.forEach(id => {
+        root.querySelector(`[data-node="${id}"]`)?.classList.add('is-closed');
+      });
+      step.frontier.forEach(([id]) => {
+        root.querySelector(`[data-node="${id}"]`)?.classList.add('is-frontier');
+      });
+      if (step.current) {
+        root.querySelector(`[data-node="${step.current}"]`)?.classList.add('is-current');
+      }
+
+      // Cumulative relaxed edges across all steps up to and including this one.
+      for (let k = 0; k <= stepIdx; k++) {
+        STEPS[k].relax.forEach(([f, t]) => {
+          root.querySelector(`[data-edge="${f}-${t}"]`)?.classList.add('is-relaxed');
+        });
+      }
+      // Highlight the edges relaxed in *this* step only.
+      step.relax.forEach(([f, t]) => {
+        root.querySelector(`[data-edge="${f}-${t}"]`)?.classList.add('is-current');
+      });
+
+      if (step.complete) {
+        root.classList.add('is-complete');
+        OPTIMAL_PATH_EDGES.forEach(eid => {
+          root.querySelector(`[data-edge="${eid}"]`)?.classList.add('is-on-path');
+        });
+        OPTIMAL_PATH_NODES.forEach(nid => {
+          root.querySelector(`[data-node="${nid}"]`)?.classList.add('is-on-path');
+        });
+        status.textContent = 'OPTIMAL PATH';
+      } else {
+        status.textContent = 'EXPLORING…';
+      }
+
+      stepLabel.textContent = `STEP ${stepIdx} / ${STEPS.length - 1}`;
+      if (!hovered) renderFrontier(step);
+    }
+
+    function fmtPair(id, val, accent) {
+      const cls = accent ? 'pair pair--accent' : 'pair';
+      return `<span class="${cls}"><span class="pair-id">${id}</span><span class="pair-sep">:</span><span class="pair-val">${val}</span></span>`;
+    }
+
+    function renderFrontier(step) {
+      const list = step.frontier;
+      // Once the goal is popped, what remains on OPEN is *pruned*, not
+      // pending — every leftover has f ≥ optimal cost, so A* proved it
+      // could never improve. Make that statement explicit.
+      const label = step.complete ? 'PRUNED' : 'OPEN';
+      if (!list.length) {
+        readout.innerHTML = `<span class="bar-key">${label}</span> <span class="bar-empty">∅</span>`;
+        return;
+      }
+      const sorted = list.slice().sort((a, b) => a[2] - b[2] || a[0].localeCompare(b[0]));
+      const minF = sorted[0][2];
+      // On the goal step, no element should be tinted as "next to pop".
+      const parts = sorted
+        .map(([id, , f]) => fmtPair(id, f, !step.complete && f === minF))
+        .join('  ');
+      readout.innerHTML = `<span class="bar-key">${label}</span> ${parts}`;
+    }
+
+    function renderHover(nodeId) {
+      if (!nodeId) { renderFrontier(STEPS[stepIdx].frontier); return; }
+      const node = NODE_BY_ID[nodeId];
+      if (!node) return;
+
+      // Pull g/f from whichever step first put this node on a list.
+      let g = null, f = null;
+      for (let k = 0; k <= stepIdx; k++) {
+        const onF = STEPS[k].frontier.find(([id]) => id === nodeId);
+        if (onF) { g = onF[1]; f = onF[2]; break; }
+      }
+
+      const reached = g != null;
+      const html = reached
+        ? `<span class="bar-key">${node.label}</span>`
+          + `<span class="hov">g=<b>${g}</b></span>`
+          + `<span class="hov">h=<b>${node.h}</b></span>`
+          + `<span class="hov hov--accent">f=<b>${f}</b></span>`
+        : `<span class="bar-key">${node.label}</span>`
+          + `<span class="hov">h=<b>${node.h}</b></span>`
+          + `<span class="hov hov--muted">unreached</span>`;
+      readout.innerHTML = html;
+    }
+
+    function setPlaying(on) {
+      playing = on;
+      playIcon.textContent = on ? '❚❚' : '▶';
+    }
+
+    function stop() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      setPlaying(false);
+    }
+
+    function play() {
+      stop();
+      // If at the end, restart from 0 before playing.
+      if (stepIdx >= STEPS.length - 1) applyStep(0);
+      setPlaying(true);
+      const tick = () => {
+        if (!playing) return;
+        if (stepIdx >= STEPS.length - 1) { setPlaying(false); return; }
+        applyStep(stepIdx + 1);
+        timer = setTimeout(tick, stepIdx === STEPS.length - 1 ? 0 : 950);
+      };
+      timer = setTimeout(tick, 700);
+    }
+
+    // ─── Wiring ─────────────────────────────────────────────────
+    root.querySelector('[data-act=prev]')
+        ?.addEventListener('click', () => { stop(); applyStep(stepIdx - 1); });
+    root.querySelector('[data-act=next]')
+        ?.addEventListener('click', () => { stop(); applyStep(stepIdx + 1); });
+    root.querySelector('[data-act=play]')
+        ?.addEventListener('click', () => { playing ? stop() : play(); });
+    root.querySelector('[data-act=replay]')
+        ?.addEventListener('click', () => { stop(); applyStep(0); play(); });
+
+    function markIncidentEdges(nodeId, on) {
+      root.querySelectorAll('.edge').forEach(edge => {
+        const isIncident = edge.dataset.from === nodeId || edge.dataset.to === nodeId;
+        edge.classList.toggle('is-related', on && isIncident);
+      });
+    }
+
+    root.querySelectorAll('[data-node]').forEach(el => {
+      const id = el.dataset.node;
+      const enter = () => {
+        hovered = id;
+        root.classList.add('is-hover');
+        el.classList.add('is-hovered');
+        markIncidentEdges(id, true);
+        renderHover(id);
+      };
+      const leave = () => {
+        hovered = null;
+        root.classList.remove('is-hover');
+        el.classList.remove('is-hovered');
+        markIncidentEdges(id, false);
+        renderHover(null);
+      };
+      el.addEventListener('mouseenter', enter);
+      el.addEventListener('mouseleave', leave);
+      el.addEventListener('focus', enter);
+      el.addEventListener('blur', leave);
+    });
+
+    // ─── Boot ───────────────────────────────────────────────────
+    if (reduceMotion) {
+      applyStep(STEPS.length - 1);
+    } else {
+      applyStep(0);
+      const io = new IntersectionObserver(entries => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            io.disconnect();
+            setTimeout(play, 350);
+            break;
+          }
+        }
+      }, { threshold: 0.25 });
+      io.observe(root);
+    }
+  })();
+</script>
+
+<style>
+  .graph {
+    margin: 0;
+    padding: 0;
+    background: var(--color-bg-alt);
+    border: 1px solid var(--color-rule);
+    box-shadow:
+      0 1px 0 0 var(--color-bg) inset,
+      0 24px 60px -30px rgba(27, 24, 20, 0.18),
+      0 8px 18px -10px rgba(27, 24, 20, 0.08);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .graph__plate {
+    padding: clamp(1rem, 2vw, 1.5rem);
+    position: relative;
+  }
+
+  /* Corner ticks — lightly suggest the page edge of a textbook plate. */
+  .graph__plate::before,
+  .graph__plate::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--color-ink-3);
+    pointer-events: none;
+  }
+  .graph__plate::before { top: 8px; left: 8px;  border-right: 0; border-bottom: 0; }
+  .graph__plate::after  { bottom: 8px; right: 8px; border-left: 0; border-top: 0; }
+
+  .graph svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  /* ─── Edges ─────────────────────────────────────────────── */
+  .edge {
+    transition: opacity 0.25s var(--ease-out);
+  }
+  .edge-line {
+    fill: none;
+    stroke: #B8B0A4;
+    stroke-width: 0.85;
+    stroke-dasharray: 3 3;
+    transition:
+      stroke 0.45s var(--ease-out),
+      stroke-width 0.45s var(--ease-out),
+      stroke-dasharray 0.45s var(--ease-out);
+    marker-end: url(#arr-faint);
+  }
+  .edge-weight {
+    fill: #8B5550;
+    opacity: 0;
+    transition: opacity 0.3s var(--ease-out);
+  }
+  /* Optimal-path edge weights are always visible — they belong to the
+     "answer" the figure is illustrating. */
+  .edge--opt .edge-weight { opacity: 1; }
+
+  /* Edge being relaxed in the current step — slightly emphasised. */
+  .edge.is-relaxed .edge-line {
+    stroke: #6E665D;
+    stroke-width: 1;
+    stroke-dasharray: 2 4;
+    marker-end: url(#arr-mid);
+  }
+  .edge.is-current .edge-line {
+    stroke: #3A3632;
+    stroke-width: 1.2;
+    stroke-dasharray: 2 3;
+    marker-end: url(#arr-mid);
+  }
+  .edge.is-current .edge-weight { opacity: 1; }
+
+  /* Optimal path solidifies into ink only after the goal is popped. */
+  .is-complete .edge--opt.is-on-path .edge-line {
+    stroke: #1B1814;
+    stroke-width: 1.8;
+    stroke-dasharray: 0;
+    marker-end: url(#arr-ink);
+    animation: draw 0.85s var(--ease-out) both;
+  }
+  .is-complete .edge--opt.is-on-path:nth-of-type(1) .edge-line { animation-delay: 0.05s; }
+  .is-complete .edge--opt.is-on-path:nth-of-type(2) .edge-line { animation-delay: 0.30s; }
+  .is-complete .edge--opt.is-on-path:nth-of-type(3) .edge-line { animation-delay: 0.55s; }
+  .is-complete .edge--opt.is-on-path:nth-of-type(4) .edge-line { animation-delay: 0.80s; }
+
+  @keyframes draw {
+    from { stroke-dasharray: 220; stroke-dashoffset: 220; }
+    to   { stroke-dasharray: 0;   stroke-dashoffset: 0; }
+  }
+
+  /* Hover behaviour — fade non-related edges, surface the hovered one. */
+  .graph.is-hover .edge { opacity: 0.35; }
+  .graph.is-hover .edge.is-related { opacity: 1; }
+  .graph.is-hover .edge.is-related .edge-weight { opacity: 1; }
+
+  /* ─── Nodes ─────────────────────────────────────────────── */
+  .node { cursor: pointer; outline: none; }
+
+  .node-shell {
+    fill: #FAF8F4;
+    stroke: #B8B0A4;
+    stroke-width: 1;
+    transition:
+      stroke 0.3s var(--ease-out),
+      stroke-width 0.3s var(--ease-out),
+      r 0.3s var(--ease-out);
+  }
+  .node-core--mid {
+    r: 0;
+    fill: #6E665D;
+    transition: r 0.35s var(--ease-out), fill 0.3s var(--ease-out);
+  }
+  .node-label {
+    fill: #5A5550;
+    transition: fill 0.3s var(--ease-out);
+    pointer-events: none;
+  }
+  .node-hit {
+    fill: transparent;
+    stroke: none;
+  }
+
+  /* Source — always double-circle ink. */
+  .node--source .node-ring { fill: #FAF8F4; stroke: #1B1814; stroke-width: 1.4; }
+  .node--source .node-core { fill: #FAF8F4; stroke: #1B1814; stroke-width: 1.4; }
+  .node--source .node-label { fill: #1B1814; }
+
+  /* Target — always crimson double-circle. */
+  .node--target .node-ring { fill: #FAF8F4; stroke: #8B0000; stroke-width: 1.4; }
+  .node--target .node-core { fill: #8B0000; stroke: #8B0000; stroke-width: 1.4; }
+  .node--target .node-label { fill: #8B0000; }
+
+  /* On the frontier — outlined ring, label darkens slightly. */
+  .node.is-frontier .node-shell {
+    stroke: #5A5550;
+    stroke-width: 1.4;
+  }
+  .node.is-frontier .node-label { fill: #3A3632; }
+
+  /* Closed (expanded) — small filled mid-tone core appears. */
+  .node.is-closed .node-core--mid { r: 4; fill: #6E665D; }
+  .node.is-closed .node-shell { stroke: #6E665D; }
+
+  /* Currently being expanded — soft ink halo + filled. */
+  .node.is-current .node-shell {
+    stroke: #1B1814;
+    stroke-width: 1.6;
+  }
+  .node.is-current .node-core--mid { r: 4; fill: #1B1814; }
+  .node.is-current .node-label { fill: #1B1814; }
+
+  .node.is-current::after,
+  .node.is-current .node-halo { /* no-op safety */ }
+
+  /* Once on the optimal path — filled ink, slightly larger core. */
+  .is-complete .node.is-on-path .node-shell {
+    stroke: transparent;
+  }
+  .is-complete .node.is-on-path .node-core--mid {
+    r: 6;
+    fill: #1B1814;
+  }
+  .is-complete .node.is-on-path .node-label { fill: #1B1814; }
+
+  /* Hover state — emphasise the hovered node. */
+  .node.is-hovered .node-shell {
+    stroke: #1B1814;
+    stroke-width: 1.6;
+  }
+  .node.is-hovered .node-label { fill: #1B1814; }
+  .node:focus-visible .node-shell,
+  .node:focus-visible .node-ring {
+    stroke: #8B0000;
+  }
+
+  /* Subtle pulse on the target while still searching. */
+  .node--target { transform-origin: 450px 180px; }
+  .graph:not(.is-complete) .node--target {
+    animation: pulse 2.4s 0.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.06); }
+  }
+
+  /* ─── Control bar ───────────────────────────────────────── */
+  .graph__bar {
+    border-top: 1px solid var(--color-rule);
+    padding: 0.55rem clamp(0.9rem, 2vw, 1.4rem);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background:
+      linear-gradient(0deg, rgba(27, 24, 20, 0.015), rgba(27, 24, 20, 0.015));
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    color: var(--color-ink-3);
+    letter-spacing: 0.08em;
+    min-height: 2.2rem;
+  }
+
+  .bar-left {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+  }
+
+  .bar-step {
+    color: var(--color-ink);
+    letter-spacing: 0.14em;
+    margin: 0 0.4rem;
+    font-variant-numeric: tabular-nums;
+    min-width: 5.5em;
+    text-align: center;
+  }
+
+  .bar-btn {
+    appearance: none;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--color-ink-3);
+    width: 1.7rem;
+    height: 1.55rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font: inherit;
+    font-size: 0.72rem;
+    cursor: pointer;
+    border-radius: 0;
+    transition:
+      color 0.18s var(--ease-out),
+      border-color 0.18s var(--ease-out),
+      background-color 0.18s var(--ease-out);
+    padding: 0;
+  }
+  .bar-btn:hover {
+    color: var(--color-ink);
+    border-color: var(--color-rule-strong);
+    background: rgba(27, 24, 20, 0.04);
+  }
+  .bar-btn:focus-visible {
+    outline: none;
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+  }
+  .bar-btn--play {
+    margin-left: 0.25rem;
+    color: var(--color-ink);
+  }
+
+  .bar-right {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+    color: var(--color-ink-3);
+    font-feature-settings: "tnum" 1;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  /* The readout swaps its inner HTML at runtime (frontier list, hover
+     details), so descendants come in *without* Astro's scope attribute.
+     We scope via the parent and use :global() for the dynamic spans. */
+  .bar-right :global(.bar-key) {
+    color: var(--color-ink);
+    margin-right: 0.5em;
+    letter-spacing: 0.14em;
+  }
+  .bar-right :global(.bar-empty) { color: var(--color-ink-4); }
+
+  /* Frontier pairs */
+  .bar-right :global(.pair) {
+    display: inline-block;
+    color: var(--color-ink-3);
+    margin-right: 0.15em;
+  }
+  .bar-right :global(.pair-id)  { color: var(--color-ink-2); }
+  .bar-right :global(.pair-sep) { color: var(--color-ink-4); margin: 0 0.1em; }
+  .bar-right :global(.pair-val) { font-variant-numeric: tabular-nums; }
+  .bar-right :global(.pair--accent .pair-id),
+  .bar-right :global(.pair--accent .pair-val) { color: var(--color-accent); }
+
+  /* Hover readout */
+  .bar-right :global(.hov) {
+    display: inline-block;
+    margin-left: 0.85em;
+    color: var(--color-ink-3);
+  }
+  .bar-right :global(.hov b) {
+    color: var(--color-ink);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .bar-right :global(.hov--accent)       { color: var(--color-ink-2); }
+  .bar-right :global(.hov--accent b)     { color: var(--color-accent); }
+  .bar-right :global(.hov--muted) {
+    color: var(--color-ink-4);
+    font-style: italic;
+    letter-spacing: 0.05em;
+  }
+
+  /* ─── Reduced motion & narrow screens ───────────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    .edge-line,
+    .node-shell,
+    .node-core--mid,
+    .node-label { transition: none; }
+    .graph:not(.is-complete) .node--target { animation: none; }
+    .is-complete .edge--opt.is-on-path .edge-line { animation: none; }
+  }
+
+  @media (max-width: 520px) {
+    .graph__bar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.4rem;
+      font-size: 0.68rem;
+    }
+    .bar-right { text-align: left; white-space: normal; }
+    .bar-step { min-width: 4.5em; }
+  }
+</style>
