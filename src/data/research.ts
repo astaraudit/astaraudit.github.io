@@ -33,14 +33,14 @@ export const research: ResearchItem[] = [
     summary: 'A repay transaction lands after a liquidator reassigns the position — and pays a stranger\'s loan.',
     url: 'https://x.com/Astaraudit/status/2051095133857440221',
   },
-  // {
-  //   tag: 'LENDING',
-  //   type: 'CONCEPT EXPLAINER',
-  //   date: 'May 2026',
-  //   title: '[Article title]',
-  //   summary: '[One-line summary]',
-  //   url: '#',
-  // },
+  {
+    tag: 'LENDING',
+    type: 'BUG BREAKDOWN',
+    date: 'May 2026',
+    title: 'Normal borrowing blocks the liquidation',
+    summary: "ZeroLend stripped Aave's aToken fallback from liquidation, so normal borrowing can drain the collateral reserve and permanently block liquidators from seizing anything.",
+    url: 'https://x.com/Astaraudit/status/2052184437547475029',
+  },
   // {
   //   tag: 'CDP',
   //   type: 'POST-MORTEM',
