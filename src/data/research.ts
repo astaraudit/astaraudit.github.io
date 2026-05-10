@@ -41,12 +41,12 @@ export const research: ResearchItem[] = [
     summary: "ZeroLend stripped Aave's aToken fallback from liquidation, so normal borrowing can drain the collateral reserve and permanently block liquidators from seizing anything.",
     url: 'https://x.com/Astaraudit/status/2052184437547475029',
   },
-  // {
-  //   tag: 'CDP',
-  //   type: 'POST-MORTEM',
-  //   date: 'May 2026',
-  //   title: '[Article title]',
-  //   summary: '[One-line summary]',
-  //   url: '#',
-  // },
+  {
+    tag: 'LENDING',
+    type: 'BUG BREAKDOWN',
+    date: 'May 2026',
+    title: 'Early settlement breaks the batch',
+    summary: "Wildcat's batched withdrawal lets lenders settle before the batch is fully populated, so early executors take more than their share and the last lender's funds get permanently stuck.",
+    url: 'https://x.com/Astaraudit/status/2053262243916382226',
+  },
 ];
